@@ -20,7 +20,7 @@ Questions & feedback go to philipp.ehses@dzne.de
 ## Installation
 Simply clone the repository and run
 ```
-python setup.py install
+pip install .
 ```
 from spiraltraj's base directory.
 
