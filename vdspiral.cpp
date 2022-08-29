@@ -1,5 +1,15 @@
 #include "vdspiral.h"
 #include <iomanip>
+#include <stdio.h>
+#include <fstream>
+
+// copy in binary mode
+bool copyFile(const char *SRC, const char* DEST) {
+    std::ifstream src(SRC, std::ios::binary);
+    std::ofstream dest(DEST, std::ios::binary);
+    dest << src.rdbuf();
+    return src && dest;
+}
 
 vdspiral::vdspiral(void) // Constructor
     : NonCartesianTraj()
@@ -142,6 +152,38 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
             std::swap(m_vfGy[k], m_vfGy[n-1-k]);
         }
         n *= 2;
+    } else if (spiralType == ROI) {
+        m_vfGx.resize(2*n+4, 0.);
+        m_vfGy.resize(2*n+4, 0.);
+        for (k=0; k<n; ++k) {
+            m_vfGx[n+k+4] = -m_vfGx[k];
+            m_vfGy[n+k+4] = -m_vfGy[k];
+        }
+        for (k=0; k<n/2; ++k) {
+            std::swap(m_vfGx[n+k+4], m_vfGx[2*n+3-k]);
+            std::swap(m_vfGy[n+k+4], m_vfGy[2*n+3-k]);
+        }
+        m_vfGx[n] = m_vfGx[n-1]/2.;
+        m_vfGy[n] = m_vfGy[n-1]/2.;
+        m_vfGx[n+1] = m_vfGx[n-1]/4.;
+        m_vfGy[n+1] = m_vfGy[n-1]/4.;
+        m_vfGx[n+2] = m_vfGx[n+4]/4.;
+        m_vfGy[n+2] = m_vfGy[n+4]/4.;
+        m_vfGx[n+3] = m_vfGx[n+4]/2.;
+        m_vfGy[n+3] = m_vfGy[n+4]/2.;
+        n = 2*n+2;
+    } else if (spiralType == SpiralDouble) {
+        m_vfGx.resize(2*n, 0.);
+        m_vfGy.resize(2*n, 0.);
+        for (k=0; k<n; ++k) {
+            m_vfGx[n+k] = m_vfGx[k];
+            m_vfGy[n+k] = m_vfGy[k];
+        }
+        for (k=0; k<n/2; ++k) {
+            std::swap(m_vfGx[n+k], m_vfGx[2*n-1-k]);
+            std::swap(m_vfGy[n+k], m_vfGy[2*n-1-k]);
+        }
+        n *= 2;
     } else if (spiralType == RIO) {
         m_vfGx.resize(2*n+2, 0.);
         m_vfGy.resize(2*n+2, 0.);
@@ -179,6 +221,7 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
         m_dMomX += m_dAx * m_vfGx[k] * m_dGradRasterTime;
         m_dMomY += m_dAy * m_vfGy[k] * m_dGradRasterTime;
     }
+    
     m_dPreMomX  = 0.; m_dPreMomY = 0.; m_dPreMomZ = 0.;
     m_dPostMomX = 0.; m_dPostMomY = 0.; m_dPostMomZ = 0.;
     if (spiralType==SpiralIn) {
@@ -204,8 +247,6 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
             m_dPostMomX += m_dAx * m_vfGx[k+m_vfGx.size()/2] * m_dGradRasterTime;
             m_dPostMomY += m_dAy * m_vfGy[k+m_vfGx.size()/2] * m_dGradRasterTime;
         }
-    } else {
-        return false;
     }
 
     return true;
@@ -431,6 +472,7 @@ std::vector<float> vdspiral::jacksonDCF(std::vector<float> &vfKx, std::vector<fl
 
 
 void vdspiral::saveTrajectory(long lADCSamples, int gridsize, double dADCshift, double dGradDelay) {
+#ifdef WIN32
     std::vector<float> vfKx, vfKy, vfDcf;
     this->calcTrajectory(vfKx, vfKy, vfDcf, lADCSamples, gridsize, dADCshift, dGradDelay);
 
@@ -454,9 +496,9 @@ void vdspiral::saveTrajectory(long lADCSamples, int gridsize, double dADCshift, 
     std::string pathname   = "C:\\Temp\\";
     #endif
     
-    std::string kxfilename = pathname + "spiral_kx_" + s + ".txt";
-    std::string kyfilename = pathname + "spiral_ky_" + s + ".txt";
-    std::string wifilename = pathname + "spiral_wi_" + s + ".txt";
+    std::string kxfilename = pathname + "spiral_kx_" + s + ".csv";
+    std::string kyfilename = pathname + "spiral_ky_" + s + ".csv";
+    std::string wifilename = pathname + "spiral_wi_" + s + ".csv";
 
     kxfile.open(kxfilename.c_str());
     kyfile.open(kyfilename.c_str());
@@ -474,4 +516,122 @@ void vdspiral::saveTrajectory(long lADCSamples, int gridsize, double dADCshift, 
     kxfile.close();
     kyfile.close();
     wifile.close();
+#endif
 }
+
+
+#ifdef BUILD_SEQU
+void vdspiral::saveGradientShapes(sGRAD_PULSE* pGradPreX, sGRAD_PULSE* pGradPreY, sGRAD_PULSE* pGradPostX, sGRAD_PULSE* pGradPostY) { 
+#ifdef WIN32
+    if (m_vfGx.size()*m_vfGy.size()==0)
+        return;
+
+    time_t rawtime;
+    struct tm * timeinfo;
+    char buffer [80];
+
+    time ( &rawtime );
+    timeinfo = localtime ( &rawtime );  
+    strftime (buffer,80,"%Y%m%d_%H%M%S",timeinfo);
+
+    std::string s;
+    std::stringstream ss;
+    ss << buffer;
+    ss >> s;
+
+    #if defined(__linux__)
+    std::string pathname   = "/tmp/";
+    #else
+    // std::string pathname   = "C:\\Temp\\";
+    std::string pathname   = "gradshapes\\";
+    #endif
+    
+    std::string filename_gr = pathname + "spiral_dephaser_Gr.csv";
+    std::string filename_gp = pathname + "spiral_dephaser_Gp.csv";
+    // try to delete dephaser gradient files (so that they only exists if written below)
+    remove(filename_gr.c_str());
+    remove(filename_gp.c_str());
+    std::ofstream gpfile, grfile;
+    if ((m_eSpiralType != SpiralOut) && (pGradPreX!=NULL) && (pGradPreY!=NULL)) {
+        filename_gr = pathname + "spiral_dephaser_Gr.csv";
+        filename_gp = pathname + "spiral_dephaser_Gp.csv";
+        gpfile.open(filename_gr.c_str(), std::ofstream::out | std::ofstream::trunc);
+        grfile.open(filename_gp.c_str(), std::ofstream::out | std::ofstream::trunc);
+        long prephase_time = MAX(pGradPreX->getTotalTime(), pGradPreY->getTotalTime());
+        for (size_t t = 0; t < prephase_time; t+=GRAD_RASTER_TIME) {
+            // account for distant possibility that gx and gy gradients do not have same length
+            long tx = t - prephase_time + pGradPreX->getTotalTime();
+            long ty = t - prephase_time + pGradPreY->getTotalTime();
+            if (tx != 0) {
+                gpfile << ", ";
+            }
+            if (tx != 0) {
+                grfile << ", ";
+            }
+            gpfile << std::setprecision(12) << pGradPreX->getCurrentAmplitude(tx);
+            grfile << std::setprecision(12) << pGradPreY->getCurrentAmplitude(ty);
+        }
+        gpfile.close();
+        grfile.close();
+
+        copyFile(filename_gr.c_str(), (pathname + "spiral_dephaser_Gr_" + s + ".csv").c_str());
+        copyFile(filename_gp.c_str(), (pathname + "spiral_dephaser_Gp_" + s + ".csv").c_str());
+    }
+    
+    // if ((m_eSpiralType != SpiralIn) && (pGradPostX!=NULL) && (pGradPostY!=NULL)) {
+    //     filename = pathname + "spiral_rephaser_read_" + s + ".csv";
+    //     gpfile.open(filename.c_str());
+    //     filename = pathname + "spiral_rephaser_phase_" + s + ".csv";
+    //     grfile.open(filename.c_str());
+    //     long prephase_time = MAX(pGradPostX->getTotalTime(), pGradPostY->getTotalTime());
+    //     for (size_t t = 0; t < prephase_time; t+=GRAD_RASTER_TIME) {
+    //         // account for distant possibility that gx and gy gradients do not have same length
+    //         long tx = t - prephase_time + pGradPostX->getTotalTime();
+    //         long ty = t - prephase_time + pGradPostY->getTotalTime();
+    //         if (tx != 0) {
+    //             gpfile << ", ";
+    //         }
+    //         if (tx != 0) {
+    //             grfile << ", ";
+    //         }
+    //         gpfile << std::setprecision(12) << pGradPostX->getCurrentAmplitude(tx);
+    //         grfile << std::setprecision(12) << pGradPostY->getCurrentAmplitude(ty);
+    //     }
+    //     gpfile.close();
+    //     grfile.close();
+    // }
+
+    filename_gr = pathname + "spiral_Gr.csv";
+    filename_gp = pathname + "spiral_Gp.csv";
+    gpfile.open(filename_gr.c_str(), std::ofstream::out | std::ofstream::trunc);
+    grfile.open(filename_gp.c_str(), std::ofstream::out | std::ofstream::trunc);
+    for (size_t t=0; t<m_GSpiralX.getTotalTime(); t+=GRAD_RASTER_TIME) {
+        if (t != 0) {
+            gpfile << ", ";
+            grfile << ", ";
+        }
+        gpfile << std::setprecision(12) << m_GSpiralX.getCurrentAmplitude(t);
+        grfile << std::setprecision(12) << m_GSpiralY.getCurrentAmplitude(t);
+    }
+    gpfile.close();
+    grfile.close();
+    copyFile(filename_gr.c_str(), (pathname + "spiral_Gr_" + s + ".csv").c_str());
+    copyFile(filename_gp.c_str(), (pathname + "spiral_Gp_" + s + ".csv").c_str());
+#endif
+}
+
+bool vdspiral::prepGradients() {
+    m_GSpiralX.setRampShape(&m_vfGx[0], m_vfGx.size(), 0, true);
+    m_GSpiralX.set(GRAD_RASTER_TIME*m_vfGx.size(), GRAD_RASTER_TIME*m_vfGx.size(), 0, m_dAx);
+    if (!m_GSpiralX.prep()) {
+        return false;
+    }
+    
+    m_GSpiralY.setRampShape(&m_vfGy[0], m_vfGy.size(), 0, true);
+    m_GSpiralY.set(GRAD_RASTER_TIME*m_vfGy.size(), GRAD_RASTER_TIME*m_vfGy.size(), 0, m_dAy);
+    if (!m_GSpiralY.prep()) {
+        return false;
+    }
+    return true;
+}
+#endif

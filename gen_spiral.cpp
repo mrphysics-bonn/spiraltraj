@@ -6,6 +6,9 @@
 // Module method definitions
 static PyObject* calc_traj_call(PyObject *self, PyObject *args, PyObject *keywds) {
     
+    double gammabar = 42.5766;
+    double grad_raster_time = 10.;
+
     int nitlv = 15;
     double res = 1.;
     double fov = 192.;
@@ -13,20 +16,23 @@ static PyObject* calc_traj_call(PyObject *self, PyObject *args, PyObject *keywds
     double min_rise = 5.;
     int spiraltype = 3;
     double spiral_os = 1.;
-    double gammabar = 42.5766;
-    double grad_raster_time = 10.;
+    double vd_transition_begin = 0.18;
+    double vd_transition_end = 0.25;
 
-    static char *kwlist[] = {"nitlv", "res", "fov", "max_amp", "min_rise", "spiraltype", "spiral_os", NULL};
+    static char *kwlist[] = {"nitlv", "res", "fov", "max_amp", "min_rise", "spiraltype", "spiral_os", "vd_transition_begin", "vd_transition_end", NULL};
     
-    if (!PyArg_ParseTupleAndKeywords(args, keywds, "|iddddid", kwlist, &nitlv, &res, &fov, &max_amp, &min_rise, &spiraltype, &spiral_os))
+    if (!PyArg_ParseTupleAndKeywords(args, keywds, "|iddddiddd", kwlist, &nitlv, &res, &fov, &max_amp, &min_rise, &spiraltype, &spiral_os, &vd_transition_begin, &vd_transition_end))
         return NULL;
+
+    if ((vd_transition_begin>=vd_transition_end) || (vd_transition_end>1.) || vd_transition_begin<0.)
+        return NULL;     // wip: error messages
 
     std::vector<double> vFov(4, 0.);
     vFov[0] = fov*spiral_os; vFov[1] = vFov[0];
     vFov[2] = fov;           vFov[3] = vFov[2];
 
     std::vector<double> vRadius(4, 0.);
-    vRadius[1] = 0.18; vRadius[2] = 0.25; vRadius[3] = 1.;
+    vRadius[1] = vd_transition_begin; vRadius[2] = vd_transition_end; vRadius[3] = 1.;
 
     vdspiral spiralTraj;
     spiralTraj.prep(nitlv, res, vFov, vRadius, max_amp, min_rise, vdspiral::eSpiralType(spiraltype), gammabar, grad_raster_time);
