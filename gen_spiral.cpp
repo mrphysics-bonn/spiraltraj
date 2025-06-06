@@ -20,9 +20,9 @@ static PyObject* calc_traj_call(PyObject *self, PyObject *args, PyObject *keywds
     double vd_transition_begin = 0.18;
     double vd_transition_end = 0.25;
 
-    static char *kwlist[] = {"nitlv", "res", "fov", "deltaz", "max_amp", "min_rise", "spiraltype", "spiral_os", "vd_transition_begin", "vd_transition_end", NULL};
+    static char *kwlist[] = {"nitlv", "res", "fov", "deltaz", "max_amp", "min_rise", "spiraltype", "spiral_os", "grad_raster_time", "vd_transition_begin", "vd_transition_end", NULL};
     
-    if (!PyArg_ParseTupleAndKeywords(args, keywds, "|idddddiddd", kwlist, &nitlv, &res, &fov, &deltaz, &max_amp, &min_rise, &spiraltype, &spiral_os, &vd_transition_begin, &vd_transition_end))
+    if (!PyArg_ParseTupleAndKeywords(args, keywds, "|idddddidddd", kwlist, &nitlv, &res, &fov, &deltaz, &max_amp, &min_rise, &spiraltype, &spiral_os, &grad_raster_time, &vd_transition_begin, &vd_transition_end))
         return NULL;
 
     if ((vd_transition_begin>=vd_transition_end) || (vd_transition_end>1.) || vd_transition_begin<0.)
