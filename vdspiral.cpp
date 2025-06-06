@@ -23,7 +23,7 @@ vdspiral::~vdspiral(void) // Destructor
 {}
 
 
-bool vdspiral::prep(int Nitlv, double res, std::vector<double> fov, std::vector<double> radius, double dMaxAmplitude, double dMinRiseTime, eSpiralType spiralType, double dLarmorConst, double dGradRasterTime) {
+bool vdspiral::prep(int Nitlv, double res, std::vector<double> fov, std::vector<double> radius, double deltaz, double dMaxAmplitude, double dMinRiseTime, eSpiralType spiralType, double dLarmorConst, double dGradRasterTime) {
     
     m_dLarmorConst  = dLarmorConst;
     m_dResolution   = res;
@@ -34,6 +34,7 @@ bool vdspiral::prep(int Nitlv, double res, std::vector<double> fov, std::vector<
     m_dMinRiseTime  = dMinRiseTime;
     m_dGradRasterTime = dGradRasterTime;
     m_eSpiralType   = spiralType;
+    m_deltaz        = deltaz;
     
     if (fov.size()!=radius.size())
         return false;
@@ -52,7 +53,7 @@ bool vdspiral::prep(int Nitlv, double res, std::vector<double> fov, std::vector<
         radius[k] *= kmax;
     }
 
-    if (!vdspiral::vdSpiralDesign(m_Nitlv, fovmax, kmax, Gmax, Smax, fov, radius, spiralType, T))
+    if (!vdspiral::vdSpiralDesign(m_Nitlv, fovmax, kmax, Gmax, Smax, fov, radius, deltaz, spiralType, T))
         return false;
     
     #ifdef BUILD_SEQU
@@ -64,14 +65,16 @@ bool vdspiral::prep(int Nitlv, double res, std::vector<double> fov, std::vector<
 }
 
 
-bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax, double Smax, std::vector<double> fov, std::vector<double> radius, eSpiralType spiralType, double T) {
+bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax, double Smax, std::vector<double> fov, std::vector<double> radius, double deltaz, eSpiralType spiralType, double T) {
 
     size_t k; // loop index
 
     //double dr = 1./500. * 1./(fovmax/Nitlv);
     double dr = 1./100. * 1./(fovmax/Nitlv); // a little faster
     long   nr = long(kmax/dr) + 1;
-    
+    double goldenAngle = M_PI * (3.0 - sqrt(5.0));
+    double deltaz_cm = deltaz / 10.; // mm -> cm
+
     std::vector<double> x, y, z;
     x.resize(nr, 0.);
     y.resize(nr, 0.);
@@ -95,6 +98,11 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
         }        
         x[k] = r * cos(theta);
         y[k] = r * sin(theta);
+        if (spiralType == LOTUS) {
+            z[k] = sin(M_PI * theta / goldenAngle) / (2.0 * deltaz_cm);
+        } else {
+            z[k] = 0.;
+        }
         if (spiralType == DoubleSpiral) {
             theta += M_PI*dr*cFoV/Nitlv;
         } else {
@@ -114,13 +122,16 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
     // determine max gradient amplitudes
     m_dAx  = 0.;
     m_dAy  = 0.;
+    m_dAz  = 0.;
     m_dAmp = 0.;
     for (k=0; k<n; ++k) {
         if (fabs(gx[k])>m_dAx)
             m_dAx  = fabs(gx[k]);
         if (fabs(gy[k])>m_dAy)
             m_dAy  = fabs(gy[k]);
-        double dAmp = sqrt(gx[k]*gx[k]+gy[k]*gy[k]);
+        if (fabs(gz[k])>m_dAz)
+            m_dAz  = fabs(gz[k]);
+        double dAmp = sqrt(gx[k]*gx[k]+gy[k]*gy[k]+ gz[k]*gz[k]);
         if (dAmp>m_dAmp)
             m_dAmp = dAmp;
     }
@@ -130,12 +141,15 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
     ///////////////////////////////////////////////////////////////////////////////////
     m_vfGx.clear();
     m_vfGy.clear();
+    m_vfGz.clear();
     m_vfGx.resize(n, 0.);
     m_vfGy.resize(n, 0.);
+    m_vfGz.resize(n, 0.);
     // copy & scale gradient to interval -1...+1
     for (k=0; k<n; ++k) {
         m_vfGx[k] = (float) (gx[k] / (m_dAx>0?m_dAx:1.));
         m_vfGy[k] = (float) (gy[k] / (m_dAy>0?m_dAy:1.));
+        m_vfGz[k] = (float) (gz[k] / (m_dAz>0?m_dAz:1.));
     }
     delete[] gx; delete[] gy; delete[] gz;
     
@@ -205,14 +219,17 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
     // add points at start and end of gradient to avoid slewrate overflow
     m_vfGx.insert(m_vfGx.begin(), m_vfGx[0]/2.);
     m_vfGy.insert(m_vfGy.begin(), m_vfGy[0]/2.);
+    m_vfGz.insert(m_vfGz.begin(), m_vfGz[0]/2.);
     m_vfGx.push_back(m_vfGx.back()/2.);
     m_vfGy.push_back(m_vfGy.back()/2.);
+    m_vfGz.push_back(m_vfGz.back()/2.);
     n+=2;
     ///////////////////////////////////////////////////////////////////////////////////////////////////
 
     // G/cm -> mT/m   
     m_dAx  *= 10.;
     m_dAy  *= 10.;
+    m_dAz  *= 10.;
     m_dAmp *= 10.;
 
     // now calculate the gradient moments
@@ -220,6 +237,7 @@ bool vdspiral::vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax
     for (k=0; k < (int)m_vfGx.size(); ++k) {
         m_dMomX += m_dAx * m_vfGx[k] * m_dGradRasterTime;
         m_dMomY += m_dAy * m_vfGy[k] * m_dGradRasterTime;
+        m_dMomZ += m_dAz * m_vfGz[k] * m_dGradRasterTime;
     }
     
     m_dPreMomX  = 0.; m_dPreMomY = 0.; m_dPreMomZ = 0.;
@@ -271,7 +289,7 @@ bool vdspiral::setSpiralType(eSpiralType spiralType) {
         //     return bStatus;
         // } else { // we need to recalculate the trajectory
             m_eSpiralType = spiralType;
-            return this->prep(m_Nitlv, m_dResolution, m_fov, m_radius, m_dMaxAmplitude, m_dMinRiseTime, m_eSpiralType, m_dLarmorConst, m_dGradRasterTime);
+            return this->prep(m_Nitlv, m_dResolution, m_fov, m_radius, m_deltaz, m_dMaxAmplitude, m_dMinRiseTime, m_eSpiralType, m_dLarmorConst, m_dGradRasterTime);
         // }
     }
     return true;

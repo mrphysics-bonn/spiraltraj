@@ -34,13 +34,14 @@ public:
         DoubleSpiral = 3,
         ROI = 4,
         RIO = 5,
-        SpiralDouble = 6
+        SpiralDouble = 6,
+        LOTUS = 7
     };
 
     vdspiral  (void);            // Constructor
     ~vdspiral (void);            // Destructor
 
-    bool prep(int Nitlv, double res, std::vector<double> fov, std::vector<double> radius, double dMaxAmplitude, double dMinRiseTime, eSpiralType spiralType = SpiralOut, double dLarmorConst = 42.5756, double dGradRasterTime = GRAD_RASTER_TIME);
+    bool prep(int Nitlv, double res, std::vector<double> fov, std::vector<double> radius, double deltaz, double dMaxAmplitude, double dMinRiseTime, eSpiralType spiralType = SpiralOut, double dLarmorConst = 42.5756, double dGradRasterTime = GRAD_RASTER_TIME);
     
     inline long getlPoints ()  {return m_vfGx.size();}
     inline long getTotalTime() {return long(m_dGradRasterTime * getlPoints());}
@@ -61,14 +62,15 @@ public:
 
     std::vector<float>& getGradX() { return m_vfGx; }
     std::vector<float>& getGradY() { return m_vfGy; }
+    std::vector<float>& getGradZ() { return m_vfGz; }
 protected:
     eSpiralType m_eSpiralType;
 
-    double m_dResolution, m_dMaxAmplitude, m_dMinRiseTime;
+    double m_dResolution, m_dMaxAmplitude, m_dMinRiseTime, m_deltaz;
     int m_Nitlv;
     std::vector<double> m_fov, m_radius;
 
-    bool vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax, double Smax, std::vector<double> fov, std::vector<double> radius, eSpiralType spiralType = SpiralOut, double T = GRAD_RASTER_TIME/1000.);
+    bool vdSpiralDesign(int Nitlv, double fovmax, double kmax, double Gmax, double Smax, std::vector<double> fov, std::vector<double> radius, double deltaz, eSpiralType spiralType = SpiralOut, double T = GRAD_RASTER_TIME/1000.);
 
     std::vector<float> jacksonDCF(std::vector<float> &vfKx, std::vector<float> &vfKy, int gridsize=128, float zeta=1.);
     
